@@ -24,7 +24,7 @@ def llm_kapat():
         ollama_process = None
         print("Local LLM başarıyla kapatıldı. RAM temizlendi!")
 
-# at exit yani çıkışta yani program sona erdirildiğinde çalışacak olan fonksiyonu göstermektedir.
+# at-exit yani çıkışta yani program sona erdirildiğinde çalışacak olan fonksiyonu göstermektedir.
 # Program çalışmayı bitirdiğinde llm_kapat adlı fonksiyonu çalıştırıp llm'i kapatacağız.
 atexit.register(llm_kapat)
 
@@ -41,11 +41,15 @@ def llm_otomatik_baslat():
         if cevap.status_code == 200:
             print("Local LLM zaten arka planda çalışıyor...\n")
             return True
-    #Eğer ConnectionError yer isek bu LLM kapalı demektir.
+        if cevap.status_code == 500:
+            print("Local LLM sunucusu çökmüş durumdadır.")
+            return False
+        
+    # Eğer ConnectionError yer isek bu LLM kapalı demektir.
     except requests.exceptions.ConnectionError:
         print("Local LLM şu an kapalı. Sizin için otomatik olarak başlatılıyor...")
         try:
-            #LLM kapalı olduğunda ollama process'i için bir subprocess açarız.
+            # LLM kapalı olduğunda ollama process'i için bir subprocess açarız.
             ollama_process = subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
             #5 saniye içinde LLM'in çalışması bekleniyor.
@@ -55,7 +59,7 @@ def llm_otomatik_baslat():
             print("Local LLM başarıyla başlatıldı!\n")
             return True
 
-        #Ollama hiç yüklü değil ise bu kısım çalışır.
+        # Ollama hiç yüklü değil ise bu kısım çalışır.
         except FileNotFoundError:
             print("Bilgisayarınızda Ollama yüklü değil veya bulunamadı!")
             return False
@@ -118,7 +122,7 @@ def pdf_oku(dosya_yolu):
     # Verilen dosya_yolu'nda bulunan PDF'i PyPDF2 kütüphanesi ile birlikte dosyayı okunmaya hazır hale getirir.
     okuyucu = PdfReader(dosya_yolu)
 
-    # PDF'teki tüm metn çıkardık.
+    # PDF'teki tüm metni çıkardık.
     tum_metin = ""
     for sayfa in okuyucu.pages:
         sayfa_metni = sayfa.extract_text()
@@ -157,14 +161,14 @@ def metinleri_vektore_cevir(chunk_listesi, embedding_modeli):
 def vektor_veritabani_olustur(vektorler):
     print("\n Faiss vektör veritabanı oluşturuluyor...")
 
-    #Vektörün boyut sayısını hesaplarız
+    # Vektörün boyut sayısını hesaplarız
     vektor_boyutu = vektorler.shape[1]
 
-    # faiss, similarity search için kullanılan facebook tarafından geliştirilmiş bir library'dir. Büyük vektör grupları içinde hızlıca arama yapar.
+    # Faiss, similarity search için kullanılan facebook tarafından geliştirilmiş bir library'dir. Büyük vektör grupları içinde hızlıca arama yapar.
     # Kütüphane nesnesi (vektor_boyutu boyutunda) oluşur, flat verilerin sıkıştırılmayacağını, L2 ise öklid mesafesi tekniğini kullanacağını söyler.  
     faiss_indeksi = faiss.IndexFlatL2(vektor_boyutu)
 
-    # Verilen vektörleri float32'ye çevirir (çünkü c++ altyapısı var FAISS'te artı olarak optimizasyon amaçlı)
+    # Verilen vektörleri float32'ye çevirir (çünkü c++ altyapısı var FAISS'te ve artı olarak optimizasyon amaçlı)
     vektorler_float32 = np.array(vektorler).astype('float32')
 
     # Veritabanına float32'ye çevrilmiş vektörler eklenir.
@@ -258,7 +262,7 @@ if __name__ == "__main__":
     # Önce bulunan PDF okunur ve PDF'teki tüm metin bulunur.
     tum_metin = pdf_oku(pdf_yolu)
 
-    # Tüm metinler chunk'lara dönüştürülür.
+    # Tüm metin chunk'lara dönüştürülür.
     chunklar = metni_parcalara_bol(tum_metin)
 
     # Bu chunk'lar vektörlere çevrilir.
@@ -283,7 +287,7 @@ if __name__ == "__main__":
         if kullanici_sorusu.strip() == "":
             continue
 
-        #Bağlam bulunur
+        # Bağlam bulunur
         ilgili_baglam = cevap_icin_baglam_bul(
             soru=kullanici_sorusu, 
             faiss_indeksi=faiss_db, 
