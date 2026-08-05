@@ -3,9 +3,9 @@ import time
 import subprocess
 import requests
 import numpy as np
-import faiss
 import atexit  
 from PyPDF2 import PdfReader
+from qdrant_client import QdrantClient, models
 from sentence_transformers import SentenceTransformer
 
 # Boş bir variable oluşturuyoruz. Ollama process'iin temsil amaçlı.
@@ -157,42 +157,97 @@ def metinleri_vektore_cevir(chunk_listesi, embedding_modeli):
     vektorler = embedding_modeli.encode(chunk_listesi, show_progress_bar=True)
     return vektorler
 
-# Vector veritabınını oluşturur ve return olarak faiss_index'ini döndürür.
-def vektor_veritabani_olustur(vektorler):
-    print("\n Faiss vektör veritabanı oluşturuluyor...")
+# Vector veritabınını oluşturur ve return olarak client ve collection_name'i döndürür.
+def vektor_veritabani_olustur(vektorler, chunk_list):
+    print("\n Q-Drant vektör veritabanı oluşturuluyor...")
 
     # Vektörün boyut sayısını hesaplarız
     vektor_boyutu = vektorler.shape[1]
 
-    # Faiss, similarity search için kullanılan facebook tarafından geliştirilmiş bir library'dir. Büyük vektör grupları içinde hızlıca arama yapar.
-    # Kütüphane nesnesi (vektor_boyutu boyutunda) oluşur, flat verilerin sıkıştırılmayacağını, L2 ise öklid mesafesi tekniğini kullanacağını söyler.  
-    faiss_indeksi = faiss.IndexFlatL2(vektor_boyutu)
+    # Q-Drant vektör data base'inin başlatılması kısmı
 
-    # Verilen vektörleri float32'ye çevirir (çünkü c++ altyapısı var FAISS'te ve artı olarak optimizasyon amaçlı)
-    vektorler_float32 = np.array(vektorler).astype('float32')
+    #Bizim server ile alakalımız olmadığı için sadece memory'de kullanmak istiyoruz (bkz:faiss gibi).
+    client = QdrantClient(":memory:")
 
-    # Veritabanına float32'ye çevrilmiş vektörler eklenir.
-    faiss_indeksi.add(vektorler_float32)
+    # Q-Drant'taki collection, ilişkisel veritabanlarıdaki tablolar gibi düşünebiliriz. Vektörler ve metadataları depolar.
+    # Collection'ımıza unique bir isim veriyoruz.
+    collection_isim = "first_drant_collection"
 
-    print(f"Toplam {faiss_indeksi.ntotal} adet vektör eklendi.\n")
-    return faiss_indeksi
+    # İsmi verdikten sonra bir collection oluşturuyoruz. İsimi yukarıda verdiğimiz ismi verdik, vektör konfigirasyonunda ise size'ımızı vektör boyutu olarak verdik
+    # Vektörler arası Similarity Search metodu olarak da COSINE kullandık (bkz: Cosine-Similarity)
+    client.create_collection(
+    collection_name=collection_isim,
+    vectors_config=models.VectorParams(
+        size=vektor_boyutu,  
+        distance=models.Distance.COSINE  
+    )
+    )
 
-# Soruyla ilgili metinleri bulur.
-def cevap_icin_baglam_bul(soru, faiss_indeksi, chunk_listesi, model, k=3):
+
+    """ 
+     Q-Drant'ta temel veri varlıkları noktalardır. Her nokta ID, Vector Data, Payload(Opsiyonel) vardır. Payload'a ek meta-data da diyebiliriz.
+     Ayrıca vektörleri Q-Drant'ın anlayabileceği tarz olan points'lere çevirmemiz gerekmektedir.
+
+     Önemli olan diğer bir konu ise FAISS'te sadece vektörleri vermek yeterli olur iken Q-Drant'ta hem chunk'ı hem vektörü vermemizin temel sebebi
+     FAISS'in Q-Drant gibi bir vektör veritabanı değildir, sadece vektör arama kütüphanesidir. Q-Drant ise hem vektör arar + bir vektör veritabanıdır + server vardır.
+
+     Aşağıdaki for kodunda olan şey tam olarak şudur:
+
+     Diyelimki elimizde 2 liste var:
+
+     vektorler = [ [0.1, 0.5], [0.8, 0.2] ]
+     chunk_list = [ "Elma tatlıdır", "Limon ekşidir" ]
+
+     kod kısmında zip(vektorler, chunk_list) dendiğinde eşleştirir => ( [0.1, 0.5], "Elma tatlıdır" ), ( [0.8, 0.2], "Limon ekşidir" )
+
+     enumerate dediğinizde ise indeks verir => 0, ( [0.1, 0.5], "Elma tatlıdır" ) /// 1, ( [0.8, 0.2], "Limon ekşidir" ) 
+
+     for'un içine geçtiğimizde ise id kısmında indeks (yani yukarıdaki örnekte 0 ya da 1), vector kısmına vektör ([0.1, 0.5]),
+     payload kısmına ise örnekteki ("limon ekşidir") kısmı gelir. 
+
+     En sonda da bu her 'nokta'yı boş bir array olan 'noktalar'a ekleriz
+
+    """
+    noktalar = []
+    for indeks, (vektor, metin_parcasi) in enumerate(zip(vektorler, chunk_list)):
+        nokta = models.PointStruct(
+            id=indeks, 
+            vector=vektor.tolist(), 
+            payload={"metin": metin_parcasi} 
+        )
+        noktalar.append(nokta)
+
+    # Noktaları veritabanına yüklüyoruz.
+    client.upsert(
+        collection_name=collection_isim,
+        points=noktalar
+    )
+   
+    print(f"Toplam {len(noktalar)} adet vektör eklendi.\n")
+
+    return client, collection_isim
+
+# Soruyla ilgili metinleri bulup bağlamı döndürür.
+def cevap_icin_baglam_bul(soru, qdrant_client, koleksiyon_isim, model, k=3):
 
     # Sorulan soru, vektöre çevrilir.
-    soru_vektoru = model.encode([soru])
+    soru_vektoru = model.encode(soru)
 
-    # Soru vektörü float32'ye çevrilir.
-    soru_vektoru_float32 = np.array(soru_vektoru).astype('float32')
+    # Qdrant üzerinde arama işlemi yapıyoruz.
+    arama_sonuclari = qdrant_client.query_points(
+        collection_name = koleksiyon_isim,
+        query = soru_vektoru.tolist(),
+        limit=k
+    )
 
-    # Veritabanında soru vektörünü arar ve bulunan sonuçların soru vektörüne uzaklığı mesafelere atılır.
-    # K ise soru vektörüne veritabanında en yakın k kadar vektörü döndürür(onların indekslerini). 
-    mesafeler, indeksler = faiss_indeksi.search(soru_vektoru_float32, k)
-
-    # İlgili metinleri bulur
-    bulunan_metinler = [chunk_listesi[sirasi] for sirasi in indeksler[0]]
+    # Gelen sonuçların içindeki 'payload'dan metinleri çıkartıp bağlamı buluyoruz
+    bulunan_metinler = []
+    for sonuc in arama_sonuclari.points:
+        bulunan_metinler.append(sonuc.payload["metin"])
+        
     return "\n\n".join(bulunan_metinler)
+
+    
 
 # Cevabı döndürür.
 def llm_ile_cevap_uret(soru, baglam, model_adi="llama3.1"):
@@ -268,8 +323,8 @@ if __name__ == "__main__":
     # Bu chunk'lar vektörlere çevrilir.
     vektorler = metinleri_vektore_cevir(chunklar, embedding_modeli)
 
-    # Bu vektörler ile de vektör veritabanı oluşturulur
-    faiss_db = vektor_veritabani_olustur(vektorler)
+    # Bu vektörler ile de Q-drant kullanılarak vektör veri tabanı oluşturulur
+    qdrant_client, qdrant_collection = vektor_veritabani_olustur(vektorler, chunklar)
     
     print("="*50)
     print("   SİSTEM HAZIR! SOHBETE BAŞLAYABİLİRSİNİZ")
@@ -290,8 +345,8 @@ if __name__ == "__main__":
         # Bağlam bulunur
         ilgili_baglam = cevap_icin_baglam_bul(
             soru=kullanici_sorusu, 
-            faiss_indeksi=faiss_db, 
-            chunk_listesi=chunklar, 
+            qdrant_client=qdrant_client, 
+            koleksiyon_isim=qdrant_collection, 
             model=embedding_modeli, 
             k=3
         )
