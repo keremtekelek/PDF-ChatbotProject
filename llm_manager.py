@@ -7,7 +7,7 @@ import requests
 ollama_process = None
 
 
-def llm_kapat():
+def close_llm():
     global ollama_process
 
     #Eğer ollama process'i boş değil ise dolu demektir yani bu process vardır demektir. Var ise durdurmak istiyoruz.
@@ -19,7 +19,7 @@ def llm_kapat():
         ollama_process = None
         print("Local LLM başarıyla kapatıldı. RAM temizlendi!")
 
-def llm_otomatik_baslat():
+def start_llm_automatically():
 
     global ollama_process
     print("Local LLM durumu kontrol ediliyor...")
@@ -27,11 +27,11 @@ def llm_otomatik_baslat():
 
     # İlgili url'e bir request atıyoruz eğer 200 cevabı geliyor ise her şey yolunda demektir
     try:
-        cevap = requests.get(url)
-        if cevap.status_code == 200:
+        answer = requests.get(url)
+        if answer.status_code == 200:
             print("Local LLM zaten arka planda çalışıyor...\n")
             return True
-        if cevap.status_code == 500:
+        if answer.status_code == 500:
             print("Local LLM sunucusu çökmüş durumdadır.")
             return False
         
@@ -54,20 +54,20 @@ def llm_otomatik_baslat():
             print("Bilgisayarınızda Ollama yüklü değil veya bulunamadı!")
             return False
 
-def llm_ile_cevap_uret(soru, baglam, model_adi="llama3.1"):
+def generate_answer(question, context, model_name="llama3.1"):
     prompt = f"""Sen zeki ve yardımcı bir asistansın. Sana verilen 'Bağlam' metnini okuyarak kullanıcının sorusunu cevapla. 
 Sadece bağlamda geçen bilgileri kullan. Eğer sorunun cevabı bağlamda yoksa, kesinlikle kendi bilginden uydurma yapma ve sadece "Bu bilgi PDF dosyasında bulunmuyor." de kusursuz, akıcı ve dilbilgisi kurallarına uygun bir Türkçe ile cevapla. Çeviri kokan veya anlamsız cümleler kurmaktan kesinlikle kaçın.
 
 Bağlam:
-{baglam}
+{context}
 
-Soru: {soru}
+Soru: {question}
 
 Cevap:"""
 
     url = "http://localhost:11434/api/generate"
     payload = {
-        "model": model_adi, 
+        "model": model_name, 
         "prompt": prompt,
 
         # Buradaki "stream" variable'ı, AI'ın oluşturduğu cevabı tekte mi yoksa daktilo gibi ürettikçe ekrana mı yansıtmalı onu temsil eder

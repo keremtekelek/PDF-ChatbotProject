@@ -14,7 +14,7 @@ from langchain_core.documents import Document
 
 # at-exit yani çıkışta yani program sona erdirildiğinde çalışacak olan fonksiyonu göstermektedir.
 # Program çalışmayı bitirdiğinde llm_kapat adlı fonksiyonu çalıştırıp llm'i kapatacağız.
-atexit.register(llm_manager.llm_kapat)
+atexit.register(llm_manager.close_llm)
 
 
 
@@ -26,44 +26,43 @@ if __name__ == "__main__":
     print("="*50)
 
     # Eğer "llm_otomatik_baslat" fonksiyonu başarıyla çalışmazsa false gönderecektir ve programı kapatmamız gerekir çünkü LLM hazır değil.
-    if not llm_manager.llm_otomatik_baslat():
+    if not llm_manager.start_llm_automatically():
         exit() 
 
-    # Uygulama, User'dan masaüstünde bulunan bir PDF dosyanın adını ister. Kullanıcı valid bir pdf dosyası ismi verene kadar sormaya devam eder.
-    pdf_yolu = None
+    # Uygulama, User'dan masaüstünde bulunan bir PDF klasörün ismini ister...
     while True:
-        istenen_pdf = input("Lütfen Masaüstündeki PDF dosyasının adını girin (Örn: kitap veya kitap.pdf) [Çıkmak için 'q']: ")
+        requested_pdf_folder = input("Lütfen Masaüstündeki PDF dosyasının adını girin (Örn: kitap veya kitap.pdf) [Çıkmak için 'q']: ")
         
-        if istenen_pdf.lower() in ['q', 'çıkış']:
+        if requested_pdf_folder.lower() in ['q', 'çıkış']:
             print("Sistem kapatılıyor...")
             exit()
             
-        pdf_yolu = pdf_manager.masaustunde_pdf_ara(istenen_pdf)
+        pdf_folder_path = pdf_manager.search_for_pdf(requested_pdf_folder)
         
-        if pdf_yolu:
+        if pdf_folder_path:
             break 
         else:
             print("Lütfen dosya adını kontrol edip tekrar deneyin.\n")
 
 
-    model_adi = "paraphrase-multilingual-MiniLM-L12-v2"
-    print(f"'{model_adi}' yükleniyor...")
+    model_name = "paraphrase-multilingual-MiniLM-L12-v2"
+    print(f"'{model_name}' yükleniyor...")
 
     # SentenceTransformer ile verilen modelin neural network altyapısını kurar, hazırlar, model inmediyse modeli indirir.
     # Ve model objesini "embedding_modeli" adlı variable'a atar.
-    embedding_modeli = SentenceTransformer(model_adi)
+    embedding_model = SentenceTransformer(model_name)
 
     # Önce bulunan PDF okunur ve PDF'teki tüm metin bulunur.
-    tum_metin = pdf_manager.pdf_oku(pdf_yolu)
+    full_text = pdf_manager.read_pdf_file(pdf_folder_path)
 
     # Tüm metin chunk'lara dönüştürülür.
-    chunklar = data_manager.metni_parcalara_bol(tum_metin)
+    chunks = data_manager.chunk(full_text)
 
     # Bu chunk'lar vektörlere çevrilir.
-    vektorler = data_manager.metinleri_vektore_cevir(chunklar, embedding_modeli)
+    vectors = data_manager.embedding(chunks, embedding_model)
 
     # Bu vektörler ile de Q-drant kullanılarak vektör veri tabanı oluşturulur
-    qdrant_client, qdrant_collection = data_manager.vektor_veritabani_olustur(vektorler, chunklar)
+    qdrant_client, qdrant_collection = data_manager.create_vector_database(vectors, chunks)
     
     print("="*50)
     print("   SİSTEM HAZIR! SOHBETE BAŞLAYABİLİRSİNİZ")
@@ -71,33 +70,33 @@ if __name__ == "__main__":
     print("PDF hakkında sorular sorabilirsiniz. Çıkmak için 'q' veya 'cikis' yazın.\n")
     
     while True:
-        kullanici_sorusu = input("\nSiz: ")
+        user_question = input("\nSiz: ")
 
         # Çıkış ifadelernden herhangi biri yazılır ise program kapatılır.
-        if kullanici_sorusu.lower() in ['q', 'cikis', 'çıkış', 'exit']:
+        if user_question.lower() in ['q', 'cikis', 'çıkış', 'exit']:
             print("Görüşmek üzere!")
             break
             
-        if kullanici_sorusu.strip() == "":
+        if user_question.strip() == "":
             continue
 
         # Bağlam bulunur
-        ilgili_baglam = data_manager.cevap_icin_baglam_bul(
-            soru=kullanici_sorusu, 
+        related_context = data_manager.find_context(
+            question=user_question, 
             qdrant_client=qdrant_client, 
-            koleksiyon_isim=qdrant_collection, 
-            model=embedding_modeli, 
+            collection_name=qdrant_collection, 
+            model=embedding_model, 
             k=3
         )
 
         # Cevap üretilir.
         print("Chatbot düşünüyor...")
-        ai_cevabi = llm_manager.llm_ile_cevap_uret(
-            soru=kullanici_sorusu, 
-            baglam=ilgili_baglam, 
-            model_adi="llama3.1" 
+        ai_answer = llm_manager.generate_answer(
+            question=user_question, 
+            context=related_context, 
+            model_name="llama3.1" 
         )
 
         # Cevap yazdırılır.
-        print(f"\nChatbot: {ai_cevabi}")
+        print(f"\nChatbot: {ai_answer}")
         print("-" * 50)

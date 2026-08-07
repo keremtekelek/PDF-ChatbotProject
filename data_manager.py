@@ -2,37 +2,37 @@ from qdrant_client import QdrantClient, models
 
 
 # "Chunking" yani parçalara bölme işlemi yapar. Return olarak parça döner.
-def metni_parcalara_bol(metin, parca_buyuklugu=400, kesisim_payi=30):
+def chunk(text, chunk_size=400, overlap_margin=30):
     print("Chunking yapılıyor...")
 
     # Metni kelimelere böler 'split()' fonksiyonu ile.
-    kelimeler = metin.split()
-    parcalar = []
+    words = text.split()
+    chunks = []
 
     # Buradan adım miktarını elde ederiz.
-    adim_miktari = parca_buyuklugu - kesisim_payi
+    step = chunk_size - overlap_margin
 
     # Her seferde adım_miktari kadar ileri gider. Buradaki sayımız 370'tir. Yani her seferde 370 kelime iterate eder.
-    for i in range(0, len(kelimeler), adim_miktari):
-        parca_metni = " ".join(kelimeler[i : i + parca_buyuklugu])
-        parcalar.append(parca_metni)
-    print(f"Toplam {len(parcalar)} adet chunk oluşturuldu.\n")
-    return parcalar
+    for i in range(0, len(words), step):
+        chunk_text = " ".join(words[i : i + chunk_size])
+        chunks.append(chunk_text)
+    print(f"Toplam {len(chunks)} adet chunk oluşturuldu.\n")
+    return chunks
 
 # Chunk'ları vektöre çevirir ve return olarak vektörleri döndürür.
-def metinleri_vektore_cevir(chunk_listesi, embedding_modeli):
+def embedding(chunk_list, embedding_model):
     print("Metin parçaları vektörlere çevriliyor...")
 
     #Tüm chunk'ları vektörlere dönüştürdük encode() fonksiyonu ile.
-    vektorler = embedding_modeli.encode(chunk_listesi, show_progress_bar=True)
-    return vektorler
+    vectors = embedding_model.encode(chunk_list, show_progress_bar=True)
+    return vectors
 
 # Vector veritabınını oluşturur ve return olarak client ve collection_name'i döndürür.
-def vektor_veritabani_olustur(vektorler, chunk_list):
+def create_vector_database(vectors, chunk_list):
     print("\n Q-Drant vektör veritabanı oluşturuluyor...")
 
     # Vektörün boyut sayısını hesaplarız
-    vektor_boyutu = vektorler.shape[1]
+    vector_size = vectors.shape[1]
 
     # Q-Drant vektör data base'inin başlatılması kısmı
 
@@ -41,14 +41,14 @@ def vektor_veritabani_olustur(vektorler, chunk_list):
 
     # Q-Drant'taki collection, ilişkisel veritabanlarıdaki tablolar gibi düşünebiliriz. Vektörler ve metadataları depolar.
     # Collection'ımıza unique bir isim veriyoruz.
-    collection_isim = "first_drant_collection"
+    collection_name = "first_drant_collection"
 
     # İsmi verdikten sonra bir collection oluşturuyoruz. İsimi yukarıda verdiğimiz ismi verdik, vektör konfigirasyonunda ise size'ımızı vektör boyutu olarak verdik
     # Vektörler arası Similarity Search metodu olarak da COSINE kullandık (bkz: Cosine-Similarity)
     client.create_collection(
-    collection_name=collection_isim,
+    collection_name=collection_name,
     vectors_config=models.VectorParams(
-        size=vektor_boyutu,  
+        size=vector_size,  
         distance=models.Distance.COSINE  
     )
     )
@@ -78,41 +78,41 @@ def vektor_veritabani_olustur(vektorler, chunk_list):
      En sonda da bu her 'nokta'yı boş bir array olan 'noktalar'a ekleriz
 
     """
-    noktalar = []
-    for indeks, (vektor, metin_parcasi) in enumerate(zip(vektorler, chunk_list)):
-        nokta = models.PointStruct(
-            id=indeks, 
-            vector=vektor.tolist(), 
-            payload={"metin": metin_parcasi} 
+    points = []
+    for index, (vector, text) in enumerate(zip(vectors, chunk_list)):
+        point = models.PointStruct(
+            id=index, 
+            vector=vector.tolist(), 
+            payload={"text": text} 
         )
-        noktalar.append(nokta)
+        points.append(point)
 
     # Noktaları veritabanına yüklüyoruz.
     client.upsert(
-        collection_name=collection_isim,
-        points=noktalar
+        collection_name=collection_name,
+        points=points
     )
    
-    print(f"Toplam {len(noktalar)} adet vektör eklendi.\n")
+    print(f"Toplam {len(points)} adet vektör eklendi.\n")
 
-    return client, collection_isim
+    return client, collection_name
 
 # Soruyla ilgili metinleri bulup bağlamı döndürür.
-def cevap_icin_baglam_bul(soru, qdrant_client, koleksiyon_isim, model, k=3):
+def find_context(question, qdrant_client, collection_name, model, k=3):
 
     # Sorulan soru, vektöre çevrilir.
-    soru_vektoru = model.encode(soru)
+    question_vector = model.encode(question)
 
     # Qdrant üzerinde arama işlemi yapıyoruz.
-    arama_sonuclari = qdrant_client.query_points(
-        collection_name = koleksiyon_isim,
-        query = soru_vektoru.tolist(),
+    search_results = qdrant_client.query_points(
+        collection_name = collection_name,
+        query = question_vector.tolist(),
         limit=k
     )
 
     # Gelen sonuçların içindeki 'payload'dan metinleri çıkartıp bağlamı buluyoruz
-    bulunan_metinler = []
-    for sonuc in arama_sonuclari.points:
-        bulunan_metinler.append(sonuc.payload["metin"])
+    found_texts = []
+    for result in search_results.points:
+        found_texts.append(result.payload["text"])
         
-    return "\n\n".join(bulunan_metinler)
+    return "\n\n".join(found_texts)
