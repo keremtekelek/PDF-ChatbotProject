@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     # Uygulama, User'dan masaüstünde bulunan bir PDF klasörün ismini ister...
     while True:
-        requested_pdf_folder = input("Lütfen Masaüstündeki PDF dosyasının adını girin (Örn: kitap veya kitap.pdf) [Çıkmak için 'q']: ")
+        requested_pdf_folder = input("Lütfen Masaüstündeki okunmasını istediğiniz klasörünün adını girin (Örn: kitap veya kitap.pdf) [Çıkmak için 'q']: ")
         
         if requested_pdf_folder.lower() in ['q', 'çıkış']:
             print("Sistem kapatılıyor...")
@@ -55,6 +55,7 @@ if __name__ == "__main__":
     # Önce bulunan PDF okunur ve PDF'teki tüm metin bulunur.
     full_text = pdf_manager.read_pdf_file(pdf_folder_path)
 
+    
     # Tüm metin chunk'lara dönüştürülür.
     chunks = data_manager.chunk(full_text)
 

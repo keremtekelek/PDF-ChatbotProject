@@ -1,5 +1,6 @@
 import os
 from PyPDF2 import PdfReader
+from langchain_community.document_loaders import PyPDFDirectoryLoader
 
 
 # Masaüstünde istenen pdf klasörünü bulur ve yolu döndürür
@@ -51,16 +52,20 @@ def search_for_pdf(requested_pdf_folder):
 
 # Verilen PDF dosyasını okur ve return olarak PDF'in tüm metnini döner
 def read_pdf_file(file_path):
-    print("PDF dosyası okunuyor...")
 
-    # Verilen dosya_yolu'nda bulunan PDF'i PyPDF2 kütüphanesi ile birlikte dosyayı okunmaya hazır hale getirir.
-    reader = PdfReader(file_path)
+    print("Klasör okunuyor...")
 
-    # PDF'teki tüm metni çıkardık.
-    full_text = ""
-    for page in reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            full_text += page_text + "\n"
-    print(f"Okuma tamamlandı! Toplam {len(reader.pages)} sayfa işlendi.\n")
-    return full_text
+    pdf_storage = PyPDFDirectoryLoader(
+        path=file_path,
+        glob="**/*.pdf",   # alt klasörlere de bakar
+    )
+
+    pdfs = pdf_storage.load()
+
+    for doc in pdfs:
+        old_path = doc.metadata.get("source", "")
+        pdf_name = os.path.basename(old_path)
+        doc.metadata["source"] = pdf_name
+
+    print(f"Toplam {len(pdfs)} sayfa yüklendi.\n")
+    return pdfs
