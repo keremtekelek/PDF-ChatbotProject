@@ -52,12 +52,13 @@ if __name__ == "__main__":
     # Ve model objesini "embedding_modeli" adlı variable'a atar.
     embedding_model = SentenceTransformer(model_name)
 
-    # Önce bulunan PDF okunur ve PDF'teki tüm metin bulunur.
-    full_text = pdf_manager.read_pdf_file(pdf_folder_path)
+    # Verilen path'teki klasör içindeki tüm PDF'lerin sayfalarını 'pages' adlı variable'a atar.
+    # Tüm bir PDF'i atmıyoruz, her pdf'in sayfasını ayrı ayrı atıyoruz ancak her sayfanın metadatası ile hangi PDF'e ait olduğunu biliyoruz.
+    pdf_pages = pdf_manager.read_pdf_file(pdf_folder_path)
 
     
     # Tüm metin chunk'lara dönüştürülür.
-    chunks = data_manager.chunk(full_text)
+    chunks = data_manager.chunk(pdf_pages)
 
     # Bu chunk'lar vektörlere çevrilir.
     vectors = data_manager.embedding(chunks, embedding_model)

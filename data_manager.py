@@ -1,22 +1,28 @@
 from qdrant_client import QdrantClient, models
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 # "Chunking" yani parçalara bölme işlemi yapar. Return olarak parça döner.
-def chunk(text, chunk_size=400, overlap_margin=30):
+def chunk(documents, chunk_size=1000, overlap_margin=150):
     print("Chunking yapılıyor...")
 
-    # Metni kelimelere böler 'split()' fonksiyonu ile.
-    words = text.split()
-    chunks = []
+    """ 
+     Önceden olduğu gibi bir PDF'i tamamen bir devasa büyük bir stringe dönüştürürsek AI'ın verdiği cevap hangi pdf'ten bunu çözmemiz mümkün olmazdı.
+     Bunun önüne geçmek için Langchain'in 'Document' nesnesini kullanmamız gerekmektedir. Text_Splitter ile bu document nesnesinin metadata'sını
+     kullanabiliyoruz.
+     """
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=overlap_margin,
+        length_function=len,
+        separators=["\n\n", "\n", ". ", " ", ""],
+        add_start_index=True
+    )
+    
+    chunks = text_splitter.split_documents(documents)
 
-    # Buradan adım miktarını elde ederiz.
-    step = chunk_size - overlap_margin
+    print(f"Toplam {len(documents)} sayfadan {len(chunks)} adet chunk oluşturuldu.\n")
 
-    # Her seferde adım_miktari kadar ileri gider. Buradaki sayımız 370'tir. Yani her seferde 370 kelime iterate eder.
-    for i in range(0, len(words), step):
-        chunk_text = " ".join(words[i : i + chunk_size])
-        chunks.append(chunk_text)
-    print(f"Toplam {len(chunks)} adet chunk oluşturuldu.\n")
     return chunks
 
 # Chunk'ları vektöre çevirir ve return olarak vektörleri döndürür.

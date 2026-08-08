@@ -50,7 +50,9 @@ def search_for_pdf(requested_pdf_folder):
     return None
 
 
-# Verilen PDF dosyasını okur ve return olarak PDF'in tüm metnini döner
+# Verilen PDF klasörünün yol'unu alır, o klasördeki tüm PDF'leri alır.
+# Ardından ilgili PDF dosyalarına metadata source olarak PDF'in ismini verir.
+# En son olarak da o klasördeki tüm PDF'leri döndürür.
 def read_pdf_file(file_path):
 
     print("Klasör okunuyor...")
