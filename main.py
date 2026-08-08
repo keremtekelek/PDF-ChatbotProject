@@ -70,6 +70,7 @@ if __name__ == "__main__":
     # Chunk'ların içinde geçen PDF adlarını alfabetik olarak döner
     available_sources = data_manager.list_sources(chunks)
 
+    # Sorgu, belirli bir PDF'te mi aranacak yoksa tüm PDF'lerde mi onun ayrımı yapılır.
     print("\nMevcut PDF'ler:")
     for order, source in enumerate(available_sources, start=1):
         print(f"   {order}. {source}")
@@ -90,6 +91,10 @@ if __name__ == "__main__":
 
     # VectorStore'dan, chain'in kullanabileceği standart bir arama arayüzü üretilir.
     retriever = data_manager.create_retriever(vector_db, k=3, source_filter=selected_source)
+
+    # LLM nesnesi oluşturulur langchaine uygun.
+    llm_model_name = "llama3.1"
+    llm = llm_manager.create_llm(model_name=llm_model_name)
 
 
 

@@ -2,6 +2,8 @@ import time
 import subprocess
 import requests
 
+from langchain_ollama import ChatOllama
+
 
 # Boş bir variable oluşturuyoruz. Ollama process'iin temsil amaçlı.
 ollama_process = None
@@ -54,32 +56,14 @@ def start_llm_automatically():
             print("Bilgisayarınızda Ollama yüklü değil veya bulunamadı!")
             return False
 
-def generate_answer(question, context, model_name="llama3.1"):
-    prompt = f"""Sen zeki ve yardımcı bir asistansın. Sana verilen 'Bağlam' metnini okuyarak kullanıcının sorusunu cevapla. 
-Sadece bağlamda geçen bilgileri kullan. Eğer sorunun cevabı bağlamda yoksa, kesinlikle kendi bilginden uydurma yapma ve sadece "Bu bilgi PDF dosyasında bulunmuyor." de kusursuz, akıcı ve dilbilgisi kurallarına uygun bir Türkçe ile cevapla. Çeviri kokan veya anlamsız cümleler kurmaktan kesinlikle kaçın.
+# Ollama'daki modele bağlanan, LangChain uyumlu bir LLM nesnesi üretir.
+def create_llm(model_name="llama3.1"):
 
-Bağlam:
-{context}
+    llm = ChatOllama(
+        model=model_name,
 
-Soru: {question}
+        # Temperature, kısaca risk seviyesidir. 0 değeri en olasını tercih ederken 1 değeri ya da daha yüksek değerler risk alır, yaratıcı olmaya çalışır. Buna gerek yok.
+        temperature=0
+    )
 
-Cevap:"""
-
-    url = "http://localhost:11434/api/generate"
-    payload = {
-        "model": model_name, 
-        "prompt": prompt,
-
-        # Buradaki "stream" variable'ı, AI'ın oluşturduğu cevabı tekte mi yoksa daktilo gibi ürettikçe ekrana mı yansıtmalı onu temsil eder
-        # "True" denirse daktilo efekti aratır, "false" denirse tüm cevabı tekte verir.
-        "stream": False
-    }
-    
-    try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            return response.json()["response"]
-        else:
-            return f"Hata oluştu! Hata Kodu: {response.status_code}"
-    except Exception as e:
-        return f"LLM ile bağlantı kurulamadı: {e}"
+    return llm
