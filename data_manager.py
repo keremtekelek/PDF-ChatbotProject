@@ -1,6 +1,6 @@
-from qdrant_client import QdrantClient, models
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_qdrant import QdrantVectorStore
+from qdrant_client import models
 
 
 # "Chunking" yani parçalara bölme işlemi yapar. Return olarak parça döner.
@@ -49,22 +49,31 @@ def create_vector_database(chunks, embedding_model, collection_name="pdf_chatbot
     print(f"Toplam {len(chunks)} adet chunk veritabanına eklendi.\n")
     return vector_store
 
-# Soruyla ilgili metinleri bulup bağlamı döndürür.
-def find_context(question, qdrant_client, collection_name, model, k=3):
+# VectorStore'u; soruya en yakın chunk'ları getiren bir Retriever'a dönüştürür.
+# Ayrıca retriever önceki find_context fonksiyonu gibi tek bir string değil, bir document listesi döndürür.
+# source_filter verilirse arama sadece o PDF'in chunk'ları içinde yapılır.
+def create_retriever(vector_store, k=3, source_filter=None):
 
-    # Sorulan soru, vektöre çevrilir.
-    question_vector = model.encode(question)
+    search_kwargs = {"k": k}
 
-    # Qdrant üzerinde arama işlemi yapıyoruz.
-    search_results = qdrant_client.query_points(
-        collection_name = collection_name,
-        query = question_vector.tolist(),
-        limit=k
+    if source_filter:
+        search_kwargs["filter"] = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.source",
+                    match=models.MatchValue(value=source_filter)
+                )
+            ]
+        )
+
+    retriever = vector_store.as_retriever(
+        search_type="similarity",
+        search_kwargs=search_kwargs
     )
 
-    # Gelen sonuçların içindeki 'payload'dan metinleri çıkartıp bağlamı buluyoruz
-    found_texts = []
-    for result in search_results.points:
-        found_texts.append(result.payload["text"])
-        
-    return "\n\n".join(found_texts)
+    return retriever
+
+
+# Chunk'ların içinde geçen PDF adlarını alfabetik olarak döner.
+def list_sources(chunks):
+    return sorted(set(c.metadata["source"] for c in chunks))

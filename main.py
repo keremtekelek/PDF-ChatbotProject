@@ -66,6 +66,36 @@ if __name__ == "__main__":
     # Aradan chunk'ları manuel olarak embedding ile vektörlere çevirme işini yapmıyoruz langchain sayesinde.
     vector_db = data_manager.create_vector_database(chunks, embedding_model)
 
+
+    # Chunk'ların içinde geçen PDF adlarını alfabetik olarak döner
+    available_sources = data_manager.list_sources(chunks)
+
+    print("\nMevcut PDF'ler:")
+    for order, source in enumerate(available_sources, start=1):
+        print(f"   {order}. {source}")
+
+    selection = input("\nHangi PDF'te arama yapılsın? (Numara girin, tümü için boş bırakın): ").strip()
+
+    selected_source = None
+
+    if selection == "":
+        print("Filtre yok: tüm PDF'lerde aranacak.\n")
+
+    elif selection.isdigit() and 1 <= int(selection) <= len(available_sources):
+        selected_source = available_sources[int(selection) - 1]
+        print(f"Filtre aktif: sadece '{selected_source}' içinde aranacak.\n")
+
+    else:
+        print("Geçersiz seçim. Tüm PDF'lerde aranacak.\n")
+
+    # VectorStore'dan, chain'in kullanabileceği standart bir arama arayüzü üretilir.
+    retriever = data_manager.create_retriever(vector_db, k=3, source_filter=selected_source)
+
+
+
+
+    #-----------------------------------------------------------------------------------------#
+
     print("="*50)
     print("   SİSTEM HAZIR! SOHBETE BAŞLAYABİLİRSİNİZ")
     print("="*50)
