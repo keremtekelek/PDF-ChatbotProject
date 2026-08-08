@@ -2,11 +2,6 @@ import os
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 
 
-# Dosya adından ders ve konu bilgisini ayrıştırır.
-# "MühendislikMatematiği-LaplaceDönüşümleriTanıtımı.pdf"
-#   -> ("MühendislikMatematiği", "Laplace Dönüşümleri Tanıtımı")
-
-
 # Masaüstünde istenen pdf klasörünü bulur ve yolu döndürür
 def search_for_pdf(requested_pdf_folder):
 
@@ -57,12 +52,12 @@ def search_for_pdf(requested_pdf_folder):
 # Verilen PDF klasörünün yol'unu alır, o klasördeki tüm PDF'leri alır.
 # Ardından ilgili PDF dosyalarına metadata source olarak PDF'in ismini verir.
 # En son olarak da o klasördeki tüm PDF'leri döndürür.
-def read_pdf_file(file_path):
+def read_pdf_file(folder_path):
 
     print("Klasör okunuyor...")
 
     pdf_storage = PyPDFDirectoryLoader(
-        path=file_path,
+        path=folder_path,
         glob="**/*.pdf",   # alt klasörlere de bakar
     )
 

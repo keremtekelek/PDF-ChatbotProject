@@ -35,6 +35,7 @@ def start_llm_automatically():
             return True
         if answer.status_code == 500:
             print("Local LLM sunucusu çökmüş durumdadır.")
+            print(f"Local LLM beklenmedik bir cevap verdi. Kod: {answer.status_code}")
             return False
         
     # Eğer ConnectionError yer isek bu LLM kapalı demektir.

@@ -4,7 +4,8 @@ import atexit
 #Bizim Manager Kütüphanelerimiz
 import llm_manager
 import pdf_manager
-import data_manager 
+import data_manager
+import chain_manager 
 
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -14,9 +15,6 @@ from langchain_huggingface import HuggingFaceEmbeddings
 # at-exit yani çıkışta yani program sona erdirildiğinde çalışacak olan fonksiyonu göstermektedir.
 # Program çalışmayı bitirdiğinde llm_kapat adlı fonksiyonu çalıştırıp llm'i kapatacağız.
 atexit.register(llm_manager.close_llm)
-
-
-
 
     
 if __name__ == "__main__":
@@ -30,7 +28,7 @@ if __name__ == "__main__":
 
     # Uygulama, User'dan masaüstünde bulunan bir PDF klasörün ismini ister...
     while True:
-        requested_pdf_folder = input("Lütfen Masaüstündeki okunmasını istediğiniz klasörünün adını girin (Örn: kitap veya kitap.pdf) [Çıkmak için 'q']: ")
+        requested_pdf_folder = input("Lütfen Masaüstündeki okunmasını istediğiniz klasörünün adını girin (Örn: kitaplar) [Çıkmak için 'q']: ")
         
         if requested_pdf_folder.lower() in ['q', 'çıkış']:
             print("Sistem kapatılıyor...")
@@ -44,17 +42,22 @@ if __name__ == "__main__":
             print("Lütfen dosya adını kontrol edip tekrar deneyin.\n")
 
 
-    model_name = "paraphrase-multilingual-MiniLM-L12-v2"
-    print(f"'{model_name}' yükleniyor...")
+    embedding_model_name = "paraphrase-multilingual-MiniLM-L12-v2"
+    print(f"'{embedding_model_name}' yükleniyor...")
 
     # SentenceTransformer ile verilen modelin neural network altyapısını kurar, hazırlar, model inmediyse modeli indirir.
     # Ve model objesini "embedding_modeli" adlı variable'a atar.
     # HuggingFaceEmbeddings, arka planda SentenceTransformer'ı kurar
-    embedding_model = HuggingFaceEmbeddings(model_name = model_name, encode_kwargs={"show_progress_bar": True})
+    embedding_model = HuggingFaceEmbeddings(model_name = embedding_model_name, show_progress=True)
 
     # Verilen path'teki klasör içindeki tüm PDF'lerin sayfalarını 'pages' adlı variable'a atar.
     # Tüm bir PDF'i atmıyoruz, her pdf'in sayfasını ayrı ayrı atıyoruz ancak her sayfanın metadatası ile hangi PDF'e ait olduğunu biliyoruz.
     pdf_pages = pdf_manager.read_pdf_file(pdf_folder_path)
+
+    # Okunacak bir PDF sayfası bulunamaz ise program kapatılır.
+    if not pdf_pages:
+        print("Okunacak PDF bulunamadığı için program sonlandırılıyor.")
+        exit()
 
     
     # PDF sayfaları chunk'lara dönüştürülür
@@ -97,9 +100,10 @@ if __name__ == "__main__":
     llm = llm_manager.create_llm(model_name=llm_model_name)
 
 
+    # Hem retriever'ı hem promptu hem llm'i tek bir zincire bağladık, rag chaine atadık.
+    rag_chain = chain_manager.create_rag_chain(retriever, llm)
 
-
-    #-----------------------------------------------------------------------------------------#
+    #------------------------------Sohbet Kısmı-----------------------------------------#
 
     print("="*50)
     print("   SİSTEM HAZIR! SOHBETE BAŞLAYABİLİRSİNİZ")
@@ -117,23 +121,31 @@ if __name__ == "__main__":
         if user_question.strip() == "":
             continue
 
-        # Bağlam bulunur
-        related_context = data_manager.find_context(
-            question=user_question, 
-            qdrant_client=qdrant_client, 
-            collection_name=qdrant_collection, 
-            model=embedding_model, 
-            k=3
-        )
+        # Cevap üretilir ve hata kontrol...
 
-        # Cevap üretilir.
         print("Chatbot düşünüyor...")
-        ai_answer = llm_manager.generate_answer(
-            question=user_question, 
-            context=related_context, 
-            model_name="llama3.1" 
-        )
 
-        # Cevap yazdırılır.
-        print(f"\nChatbot: {ai_answer}")
+        try:
+            result = rag_chain.invoke({"input": user_question})
+        except Exception as error:
+            print(f"\n[HATA] Cevap üretilemedi: {error}")
+            print("Ollama'nın çalıştığından emin olup tekrar deneyin.")
+            continue
+
+        print(f"\nChatbot: {result['answer']}")
+
+        
+        # İncelenen kaynakları yazdırıyoruz.
+
+        used_references = []
+        for doc in result["context"]:
+            reference = (doc.metadata["source"], doc.metadata["page"] + 1)
+            if reference not in used_references:
+                used_references.append(reference)
+
+        if used_references:
+            print("\nİncelenen kaynaklar:")
+            for source, page_number in used_references:
+                print(f"   - {source} (s.{page_number})")
+
         print("-" * 50)
