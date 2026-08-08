@@ -1,6 +1,10 @@
 import os
-from PyPDF2 import PdfReader
 from langchain_community.document_loaders import PyPDFDirectoryLoader
+
+
+# Dosya adından ders ve konu bilgisini ayrıştırır.
+# "MühendislikMatematiği-LaplaceDönüşümleriTanıtımı.pdf"
+#   -> ("MühendislikMatematiği", "Laplace Dönüşümleri Tanıtımı")
 
 
 # Masaüstünde istenen pdf klasörünü bulur ve yolu döndürür
@@ -65,9 +69,13 @@ def read_pdf_file(file_path):
     pdfs = pdf_storage.load()
 
     for doc in pdfs:
-        old_path = doc.metadata.get("source", "")
-        pdf_name = os.path.basename(old_path)
-        doc.metadata["source"] = pdf_name
+        pdf_name = os.path.basename(doc.metadata.get("source", ""))
+        page_index = doc.metadata.get("page", 0)
+
+        doc.metadata = {
+            "source": pdf_name,
+            "page": page_index
+        }
 
     print(f"Toplam {len(pdfs)} sayfa yüklendi.\n")
     return pdfs

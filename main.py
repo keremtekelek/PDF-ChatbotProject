@@ -1,5 +1,4 @@
 # Dışarıdan Gelen Kütüphaneler
-import numpy as np
 import atexit
 
 #Bizim Manager Kütüphanelerimiz
@@ -7,8 +6,8 @@ import llm_manager
 import pdf_manager
 import data_manager 
 
-from sentence_transformers import SentenceTransformer
-from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
+
 
 
 
@@ -50,22 +49,23 @@ if __name__ == "__main__":
 
     # SentenceTransformer ile verilen modelin neural network altyapısını kurar, hazırlar, model inmediyse modeli indirir.
     # Ve model objesini "embedding_modeli" adlı variable'a atar.
-    embedding_model = SentenceTransformer(model_name)
+    # HuggingFaceEmbeddings, arka planda SentenceTransformer'ı kurar
+    embedding_model = HuggingFaceEmbeddings(model_name = model_name, encode_kwargs={"show_progress_bar": True})
 
     # Verilen path'teki klasör içindeki tüm PDF'lerin sayfalarını 'pages' adlı variable'a atar.
     # Tüm bir PDF'i atmıyoruz, her pdf'in sayfasını ayrı ayrı atıyoruz ancak her sayfanın metadatası ile hangi PDF'e ait olduğunu biliyoruz.
     pdf_pages = pdf_manager.read_pdf_file(pdf_folder_path)
 
     
-    # Tüm metin chunk'lara dönüştürülür.
+    # PDF sayfaları chunk'lara dönüştürülür
     chunks = data_manager.chunk(pdf_pages)
 
-    # Bu chunk'lar vektörlere çevrilir.
-    vectors = data_manager.embedding(chunks, embedding_model)
-
-    # Bu vektörler ile de Q-drant kullanılarak vektör veri tabanı oluşturulur
-    qdrant_client, qdrant_collection = data_manager.create_vector_database(vectors, chunks)
     
+    # Chunk'lar vektöre çevrilir ardından sorgulanabilir bir vector veritabanina çevrilir.
+    # Tek seferded embedding de burada yapılıyor vektör database'i de burada yapılıyor.
+    # Aradan chunk'ları manuel olarak embedding ile vektörlere çevirme işini yapmıyoruz langchain sayesinde.
+    vector_db = data_manager.create_vector_database(chunks, embedding_model)
+
     print("="*50)
     print("   SİSTEM HAZIR! SOHBETE BAŞLAYABİLİRSİNİZ")
     print("="*50)
