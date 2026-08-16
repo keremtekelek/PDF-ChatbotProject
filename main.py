@@ -8,6 +8,9 @@ import data_manager
 import chain_manager 
 
 from langchain_huggingface import HuggingFaceEmbeddings
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 
