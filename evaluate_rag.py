@@ -26,7 +26,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 load_dotenv()
 
 # Test soruları 
-test_soruları = [
+test_questions = [
     {
         "question": "Self Attention nedir?",
         "ground_truth": "Self-Attention yani Öz-Dikkat mekanizması, en basit olarak verilen metinde kelimelerin ve belirteçlerin önemini tartmak ve aralarındaki ilişkileri daha iyi anlamak için kullanılır"
@@ -75,7 +75,7 @@ def main():
     
     print("\n Test soruları soruluyor.")
     
-    for item in test_soruları:
+    for item in test_questions:
         question = item["question"]
         ground_truth = item["ground_truth"]
         
@@ -107,20 +107,20 @@ def main():
      
     # Normalde RAGAS, LLM ile kullanılmadığı için hemen cevap alabiliyor. Biz LLM kullandığımız için TimeoutError yiyebiliyoruz.
     # Bu hatayı yememek için genişlik getiriyoruz.
-    ayarlar = RunConfig(timeout=600, max_workers=1)
+    settings = RunConfig(timeout=600, max_workers=1)
 
-    sonuc = evaluate(
+    results = evaluate(
         dataset=dataset,
         metrics=metrics,
         llm=llm,
         embeddings=embedding_model,
-        run_config=ayarlar
+        run_config=settings
     )
     
     print("\n" + "="*50)
     print("  DEĞERLENDİRME SONUÇLARI ")
     print("="*50)
-    print(sonuc)
+    print(results)
 
 if __name__ == "__main__":
     main()
