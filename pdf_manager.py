@@ -1,76 +1,67 @@
 import os
-from langchain_community.document_loaders import PyPDFDirectoryLoader
+import tempfile
+from langchain_community.document_loaders import PyPDFDirectoryLoader, PyPDFLoader
+from langchain_core.documents import Document
 
-
-# Masaüstünde istenen pdf klasörünü bulur ve yolu döndürür
 def search_for_pdf(requested_pdf_folder):
-
-    # os.path.expanduser("~") kodu, kullanıcının ana klasörünü getirmektedir. Örneğin Windows ise "C:\Users\Username" döndürür.
     user_directory = os.path.expanduser("~")
-
-
-    """
-    PDF klasörünü masaüstünde arayacağımız için kullanıcının masaüstüne erişmemiz gerekiyor.
-    Ondan ötürü kullanıcının masaüstüne erişebilen potansiyel yolları arıyoruz.
-    """
     potential_paths = [
-        os.path.join(user_directory, "Desktop"), # C:\Users\Username\Desktop dizinini döndürür.
-        os.path.join(user_directory, "Masaüstü"), # C:\Users\Username\Masaüstü dizinini döndürür.
-        os.path.join(user_directory, "OneDrive", "Masaüstü"), # C:\Users\Username\OneDrive\Masaüstü dizinini döndürür.
-        os.path.join(user_directory, "OneDrive", "Desktop") # C:\Users\Username\OneDrive\Desktop dizinini döndürür.
+        os.path.join(user_directory, "Desktop"),
+        os.path.join(user_directory, "Masaüstü"),
+        os.path.join(user_directory, "OneDrive", "Masaüstü"),
+        os.path.join(user_directory, "OneDrive", "Desktop")
     ]
 
-
-    # Olası yollardan mevcut olanı gecerli_masaustu adlı variable'a atıp valid olan desktop'u buluyoruz.
     current_desktop = None
     for path in potential_paths:
         if os.path.exists(path):
             current_desktop = path
             break
 
-    # Olası yollardan herhangi biri path olarak yok ise bilgisayarda, bu masaüstü bulunamamış demektir...
     if not current_desktop:
-        print("Bilgisayarınızda Masaüstü bulunamadı.")
         return None
         
-    print(f"\n'{requested_pdf_folder}' klasörü Masaüstünde aranıyor...")
-
-    
-    # Bulduğumuz masaüstü path'indeki tüm klasörleri ilgili klasörü bulmaya çalışıyoruz ve bunu döndürüyoruz.
-    
     for root, dirs, files in os.walk(current_desktop):
         for dir_name in dirs: 
             if dir_name.lower() == requested_pdf_folder.lower():
-                found_pdf_folder = os.path.join(root, dir_name)
-                print(f"Klasör bulundu: {found_pdf_folder}\n")
-                return found_pdf_folder
-                
-    print(f"'{requested_pdf_folder}' Masaüstünde bulunamadı.")
+                return os.path.join(root, dir_name)
     return None
 
-
-# Verilen PDF klasörünün yol'unu alır, o klasördeki tüm PDF'leri alır.
-# Ardından ilgili PDF dosyalarına metadata source olarak PDF'in ismini verir.
-# En son olarak da o klasördeki tüm PDF'leri döndürür.
 def read_pdf_file(folder_path):
-
-    print("Klasör okunuyor...")
-
-    pdf_storage = PyPDFDirectoryLoader(
-        path=folder_path,
-        glob="**/*.pdf",   # alt klasörlere de bakar
-    )
-
+    pdf_storage = PyPDFDirectoryLoader(path=folder_path, glob="**/*.pdf")
     pdfs = pdf_storage.load()
 
     for doc in pdfs:
         pdf_name = os.path.basename(doc.metadata.get("source", ""))
         page_index = doc.metadata.get("page", 0)
-
         doc.metadata = {
             "source": pdf_name,
             "page": page_index
         }
-
-    print(f"Toplam {len(pdfs)} sayfa yüklendi.\n")
     return pdfs
+
+# --- Sürükle-Bırak / Arayüz Yüklemeleri İçin Fonksiyon ---
+def read_uploaded_pdfs(uploaded_files):
+    """
+    Arayüzden sürükle-bırak veya dosya seçici ile yüklenen PDF dosyalarını okur
+    ve standart metadata formatı ile Document nesneleri listesi döner.
+    """
+    all_documents = []
+    
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for uploaded_file in uploaded_files:
+            temp_file_path = os.path.join(temp_dir, uploaded_file.name)
+            with open(temp_file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+                
+            loader = PyPDFLoader(temp_file_path)
+            docs = loader.load()
+            
+            for doc in docs:
+                doc.metadata = {
+                    "source": uploaded_file.name,
+                    "page": doc.metadata.get("page", 0)
+                }
+                all_documents.append(doc)
+                
+    return all_documents
