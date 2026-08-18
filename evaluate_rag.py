@@ -81,10 +81,10 @@ def main():
         
         print(f"Soru: {question}")
         
-        # Soruyu RAG zincirine gönderiyoruz
+        # Soruyu RAG zincirine gönderip sonucu alıyoruz
         result = rag_chain.invoke({"input": question})
         
-        # Sistemin verdiği cevabı alıyoruz
+        # Sistemin verdiği sonuçtan cevabı alıyoruz
         answer = result["answer"]
         
         # Sistemin o cevabı vermek için okuduğu PDF parçalarını metne çeviriyoruz

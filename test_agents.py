@@ -16,20 +16,24 @@ def main():
     # bind_tools ile birlikte Tools'u LLM'e bağlıyoruz.
     llm_with_tools = llm.bind_tools(usable_tools)
 
+    # Tool name'lerini bir dict'te tutuyoruz.
     tool_dictionary = {tool.name: tool for tool in usable_tools}
-    
+
+    # Soruyu sorduk
     question = "125 ile 4'ü çarpar mısın?"
     print(f"\n Kullanıcı Sorusu: {question}")
     print("Agent Düşünüyor...")
 
+    # Mesajı gönderiyoruz
     message = HumanMessage(content=question)
-    
+
+    # LLM'e cevabı gönderip cevabı aldık.
     answer = llm_with_tools.invoke([message])
 
     print("\n--- FUNCTION CALLING ANALIZ SONUCU ---")
     
     if answer.tool_calls:
-        print("💡 Agent, fonksiyon çağırdı.")
+        print("Agent, fonksiyon çağırdı.")
         for tool_calling in answer.tool_calls:
 
             tool_name = tool_calling['name']

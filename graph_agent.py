@@ -7,16 +7,19 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 def main():
     print("="*50)
-    print("   LANGGRAPH AJAN TESTİ (DÖNGÜSEL SİSTEM)")
+    print("   LANGGRAPH AGENT TESTİ (LOOPS)")
     print("="*50)
 
     if not llm_manager.start_llm_automatically():
         print("LLM başlatılamadı.")
         return
-        
+
+
+    # LLM'i oluşturup tool'u bağladık.
     llm = llm_manager.create_llm(model_name="llama3.1")
     llm_with_tools = llm.bind_tools(usable_tools)
 
+    
     graph_builder = StateGraph(MessagesState)
 
     def chatbot(state: MessagesState):
@@ -24,7 +27,7 @@ def main():
 
     tool_node = ToolNode(tools=usable_tools)
 
-    # DÜZELTİLDİ: Düğümün adını LangGraph'ın beklediği gibi "tools" yaptık
+    
     graph_builder.add_node("asistan", chatbot)
     graph_builder.add_node("tools", tool_node)
 
@@ -41,7 +44,7 @@ def main():
 
     question = "Önce 125 ile 4'ü çarp, sonra çıkan sonuçtan 100 çıkar. Sonuç nedir?"
     print(f"\nKullanıcı Sorusu: {question}\n")
-    print("Agent Düşünüyor ve Adım Adım İlerliyor...\n")
+    print("Agent Düşünüyor...\n")
 
     initial_state = {"messages": [HumanMessage(content=question)]}
     

@@ -1,8 +1,7 @@
 from langchain_core.tools import tool
 from typing import Union
 
-
-# Tetiklenebilir bir tool olduğunu belirtir.
+# @tol dekoratörü, python'da yazılan fonksiyonların LLM tarafından çağrılabileceği araçlara (tools yani) çevirir.
 
 @tool
 def multiply_operation(a: int, b: int) -> int:
