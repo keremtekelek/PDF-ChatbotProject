@@ -1,195 +1,169 @@
 import streamlit as st
 import atexit
-import os
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_huggingface import HuggingFaceEmbeddings
 
-# Mevcut modüller
 import llm_manager
 import pdf_manager
 import data_manager
-import chain_manager
-
-from langchain_huggingface import HuggingFaceEmbeddings
+import agent_tools
+import graph_agent
 
 # Sayfa Yapılandırması
 st.set_page_config(
-    page_title="PDF AI Chatbot",
-    page_icon="📄",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Agentic PDF Chatbot",
+    page_icon="🤖",
+    layout="wide"
 )
 
-# Kapanışta Ollama sürecini temizleme
 atexit.register(llm_manager.close_llm)
 
-# Özel CSS ile Modern Arayüz Teması
+# Özel CSS
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #1E88E5;
-        margin-bottom: 0.2rem;
-    }
-    .sub-header {
-        font-size: 1rem;
-        color: #6c757d;
-        margin-bottom: 1.5rem;
-    }
-    .stChatMessage {
-        border-radius: 10px;
-        margin-bottom: 10px;
-    }
-    .source-box {
-        background-color: #f8f9fa;
-        border-left: 4px solid #1E88E5;
-        padding: 10px;
-        border-radius: 4px;
-        margin-top: 8px;
-        font-size: 0.85rem;
-    }
+    .main-header { font-size: 2.2rem; font-weight: 700; color: #1E88E5; margin-bottom: 0.2rem; }
+    .sub-header { font-size: 1rem; color: #6c757d; margin-bottom: 1.5rem; }
+    .agent-step { background-color: #f1f3f4; border-left: 4px solid #f2994a; padding: 8px 12px; margin: 6px 0; border-radius: 4px; font-size: 0.88rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# Session State Başlatma
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# Session State
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []  # LangChain message nesneleri
 
-if "vector_db" not in st.session_state:
-    st.session_state.vector_db = None
+if "display_messages" not in st.session_state:
+    st.session_state.display_messages = []  # UI gösterim listesi
 
-if "rag_chain" not in st.session_state:
-    st.session_state.rag_chain = None
+if "agent_graph" not in st.session_state:
+    st.session_state.agent_graph = None
 
 if "available_sources" not in st.session_state:
     st.session_state.available_sources = []
 
 if "embedding_model" not in st.session_state:
-    with st.spinner("Embedding modeli yükleniyor..."):
+    with st.spinner("Embedding modeli hazırlanıyor..."):
         st.session_state.embedding_model = HuggingFaceEmbeddings(
             model_name="paraphrase-multilingual-MiniLM-L12-v2"
         )
 
-# --- Yan Panel (Sidebar) ---
+# --- Sol Panel (Sidebar) ---
 with st.sidebar:
-    st.title("⚙️ Kontrol Paneli")
+    st.title("🤖 Ajan Kontrol Paneli")
     
-    # Ollama Servis Kontrolü
-    llm_status = llm_manager.start_llm_automatically()
-    if llm_status:
-        st.success("🟢 Local LLM (Ollama) Aktif", icon="✅")
+    # LLM Durumu
+    if llm_manager.start_llm_automatically():
+        st.success("🟢 Local LLM (Ollama) Aktif")
     else:
-        st.error("🔴 Local LLM Başlatılamadı! Ollama servisinin açık olduğundan emin olun.", icon="⚠️")
+        st.error("🔴 Local LLM Kapalı! Ollama'yı başlatın.")
 
     st.markdown("---")
-    
-    # PDF Sürükle-Bırak Yükleme Alanı
-    st.subheader("📁 Belge Yükleme")
+    st.subheader("📄 PDF Yükleme")
     uploaded_files = st.file_uploader(
-        "PDF dosyalarını buraya sürükleyin veya seçin",
+        "PDF dosyalarını sürükleyip bırakın:",
         type=["pdf"],
-        accept_multiple_files=True,
-        help="Bir veya birden fazla PDF dosyası yükleyebilirsiniz."
+        accept_multiple_files=True
     )
 
-    if uploaded_files and st.button("🚀 PDF'leri İşle ve İndeksle", use_container_width=True):
-        with st.spinner("PDF sayfaları okunuyor ve vektör veritabanı oluşturuluyor..."):
-            try:
-                # 1. PDF'leri Oku
-                docs = pdf_manager.read_uploaded_pdfs(uploaded_files)
+    if uploaded_files and st.button("🚀 Ajanı Hazırla (İndeksle)", use_container_width=True):
+        with st.spinner("PDF'ler taranıyor ve Ajan araçları kuruluyor..."):
+            docs = pdf_manager.read_uploaded_pdfs(uploaded_files)
+            if docs:
+                chunks = data_manager.chunk(docs)
+                vector_db = data_manager.create_vector_database(chunks, st.session_state.embedding_model)
+                retriever = data_manager.create_retriever(vector_db, k=3)
                 
-                if docs:
-                    # 2. Chunk'lara böl
-                    chunks = data_manager.chunk(docs)
-                    
-                    # 3. Vektör Veritabanı Oluştur
-                    vector_db = data_manager.create_vector_database(chunks, st.session_state.embedding_model)
-                    st.session_state.vector_db = vector_db
-                    
-                    # 4. Kaynakları listele
-                    sources = data_manager.list_sources(chunks)
-                    st.session_state.available_sources = sources
-                    
-                    st.success(f"{len(uploaded_files)} PDF ({len(chunks)} parça) başarıyla indekslendi!")
-                else:
-                    st.warning("Yüklenen dosyalarda okunabilir metin bulunamadı.")
-            except Exception as e:
-                st.error(f"İşlem sırasında hata oluştu: {e}")
+                # Dinamik PDF tool'u ve matematik araçlarını birleştir
+                pdf_tool = agent_tools.build_pdf_search_tool(retriever)
+                all_tools = agent_tools.base_math_tools + [pdf_tool]
+                
+                llm = llm_manager.create_llm(model_name="llama3.1")
+                st.session_state.agent_graph = graph_agent.create_agent_graph(llm, all_tools)
+                st.session_state.available_sources = data_manager.list_sources(chunks)
+                
+                st.success(f"Ajan hazır! {len(uploaded_files)} PDF ve {len(all_tools)} Araç bağlandı.")
+            else:
+                st.warning("Okunabilir metin bulunamadı.")
 
-    # Kaynak Filtresi (Opsiyonel)
-    if st.session_state.available_sources:
-        st.markdown("---")
-        st.subheader("🎯 Arama Filtresi")
-        selected_source = st.selectbox(
-            "Hedef Belge:",
-            options=["Tüm Belgeler"] + st.session_state.available_sources,
-            index=0
-        )
-        
-        # Filtreye göre retriever ve RAG zincirini güncelle
-        filter_val = None if selected_source == "Tüm Belgeler" else selected_source
-        retriever = data_manager.create_retriever(
-            st.session_state.vector_db,
-            k=3,
-            source_filter=filter_val
-        )
-        llm = llm_manager.create_llm(model_name="llama3.1")
-        st.session_state.rag_chain = chain_manager.create_rag_chain(retriever, llm)
+    st.markdown("---")
+    st.subheader("🛠️ Ajanın Araçları")
+    st.markdown("- 🔍 `search_pdf` (PDF Tarayıcı)\n- ✖️ `multiply_operation` (Çarpma)\n- ➕ `addition_operation` (Toplama)\n- ➖ `subtract_operation` (Çıkarma)\n- ➗ `division_operation` (Bölme)")
 
     st.markdown("---")
     if st.button("🗑️ Sohbeti Temizle", use_container_width=True):
-        st.session_state.messages = []
+        st.session_state.chat_history = []
+        st.session_state.display_messages = []
         st.rerun()
 
-# --- Ana Ekran (Sohbet Alanı) ---
-st.markdown('<div class="main-header">📄 PDF AI Chatbot</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Belgelerinizi yükleyin ve içerikleri hakkında doğrudan soru sorun.</div>', unsafe_allow_html=True)
+# --- Ana Ekran ---
+st.markdown('<div class="main-header">🤖 Agentic PDF Chatbot (LangGraph)</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">PDF belgeleriniz hakkında sorular sorun; ajanınız gerektiğinde belgeleri tarar, gerektiğinde hesaplama araçlarını kullanır.</div>', unsafe_allow_html=True)
 
-# Önceki Mesajları Görüntüle
-for msg in st.session_state.messages:
+# Önceki Mesajları Göster
+for msg in st.session_state.display_messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-        if "references" in msg and msg["references"]:
-            with st.expander("📚 İncelenen Kaynaklar"):
-                for src, page in msg["references"]:
-                    st.markdown(f"- **{src}** (Sayfa {page})")
+        if "steps" in msg and msg["steps"]:
+            with st.expander("🔍 Ajanın Düşünce ve Araç Çağrıları"):
+                for step in msg["steps"]:
+                    st.markdown(f"**Araç:** `{step['tool']}`\n\n**Parametre:** `{step['args']}`\n\n**Sonuç:**\n```\n{step['result']}\n```")
 
-# Kullanıcı Soru Girişi
-if prompt := st.chat_input("PDF'ler hakkında bir soru sorun..."):
-    if not st.session_state.rag_chain:
-        st.info("Lütfen önce sol panelden PDF yükleyip 'PDF'leri İşle ve İndeksle' butonuna basın.")
+# Soru Girişi
+if prompt := st.chat_input("Bir soru sorun (Örn: 'PDF'teki satış tutarını bul ve 4 ile çarp')"):
+    if not st.session_state.agent_graph:
+        st.info("Lütfen önce sol panelden PDF yükleyip 'Ajanı Hazırla' butonuna basın.")
     else:
-        # Kullanıcı mesajını kaydet ve göster
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # Kullanıcı mesajını göster ve ekle
+        st.session_state.display_messages.append({"role": "user", "content": prompt})
+        st.session_state.chat_history.append(HumanMessage(content=prompt))
+        
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Asistan Cevabı Üret
+        # Ajanı Çalıştır
         with st.chat_message("assistant"):
-            with st.spinner("Belgeler taranıyor ve cevap üretiliyor..."):
+            agent_placeholder = st.empty()
+            with st.spinner("Ajan düşünüyor ve araçları yönetiyor..."):
                 try:
-                    result = st.session_state.rag_chain.invoke({"input": prompt})
-                    answer = result.get("answer", "")
+                    tool_steps = []
+                    final_answer = ""
                     
-                    # Referans kaynakları topla
-                    used_references = []
-                    for doc in result.get("context", []):
-                        ref = (doc.metadata.get("source", "Bilinmeyen"), doc.metadata.get("page", 0) + 1)
-                        if ref not in used_references:
-                            used_references.append(ref)
+                    # LangGraph akışını yürüt
+                    state_input = {"messages": st.session_state.chat_history}
+                    for event in st.session_state.agent_graph.stream(state_input, stream_mode="values"):
+                        last_message = event["messages"][-1]
+                        
+                        # Araç çağrısı varsa kaydet
+                        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                            for tc in last_message.tool_calls:
+                                tool_steps.append({
+                                    "tool": tc["name"],
+                                    "args": tc["args"],
+                                    "result": "Çalıştırılıyor..."
+                                })
+                        
+                        # Araç sonucu döndüyse güncelle
+                        if isinstance(last_message, ToolMessage):
+                            if tool_steps:
+                                tool_steps[-1]["result"] = str(last_message.content)
+                                
+                        # Nihai cevap
+                        if isinstance(last_message, AIMessage) and not last_message.tool_calls:
+                            final_answer = last_message.content
 
-                    st.markdown(answer)
+                    agent_placeholder.markdown(final_answer)
                     
-                    if used_references:
-                        with st.expander("📚 İncelenen Kaynaklar"):
-                            for src, page in used_references:
-                                st.markdown(f"- **{src}** (Sayfa {page})")
+                    if tool_steps:
+                        with st.expander("🔍 Ajanın Düşünce ve Araç Çağrıları"):
+                            for step in tool_steps:
+                                st.markdown(f"**Araç:** `{step['tool']}`  \n**Parametreler:** `{step['args']}`  \n**Çıktı:**\n```\n{step['result']}\n```")
 
-                    # Asistan cevabını ve kaynakları kaydet
-                    st.session_state.messages.append({
+                    # Geçmişi güncelle
+                    st.session_state.chat_history.append(AIMessage(content=final_answer))
+                    st.session_state.display_messages.append({
                         "role": "assistant",
-                        "content": answer,
-                        "references": used_references
+                        "content": final_answer,
+                        "steps": tool_steps
                     })
 
                 except Exception as e:
-                    st.error(f"Cevap üretilirken bir hata oluştu: {e}")
+                    st.error(f"Ajan çalışırken hata oluştu: {e}")

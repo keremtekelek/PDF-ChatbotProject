@@ -1,56 +1,40 @@
-import llm_manager
-from agent_tools import usable_tools
-from langchain_core.messages import HumanMessage
-
+from langchain_core.messages import SystemMessage
 from langgraph.graph import StateGraph, MessagesState, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
-def main():
-    print("="*50)
-    print("   LANGGRAPH AGENT TESTİ (LOOPS)")
-    print("="*50)
+SYSTEM_PROMPT = """Sen zeki, yetenekli bir Ajan (Agentic AI) ve PDF araştırma asistanısın.
+Kullanıcının sorularını cevaplamak için elindeki araçları (tools) kullanabilirsin:
 
-    if not llm_manager.start_llm_automatically():
-        print("LLM başlatılamadı.")
-        return
+Kurallar:
+1. PDF belgesiyle ilgili sorularda veya belgedeki bilgileri aramak gerektiğinde 'search_pdf' aracını kullan.
+2. Matematiksel hesaplamalarda veya sayısal işlemlerde kesinlikle tahmin yapma; 'multiply_operation', 'addition_operation', 'subtract_operation', 'division_operation' araçlarını kullan.
+3. Soruda hem belge taraması hem hesaplama gerekiyorsa, önce 'search_pdf' ile veriyi bul, ardından çıkan verilerle matematik araçlarını çağır.
+4. Bilgi PDF'te yoksa ve genel bir soru değilse "Bu bilgi PDF dosyasında bulunmuyor." de.
+5. Akıcı, net ve dilbilgisi kurallarına uygun bir Türkçe ile doğrudan cevap ver.
+"""
 
-
-    # LLM'i oluşturup tool'u bağladık.
-    llm = llm_manager.create_llm(model_name="llama3.1")
-    llm_with_tools = llm.bind_tools(usable_tools)
-
-    
-    graph_builder = StateGraph(MessagesState)
+def create_agent_graph(llm, tools):
+    """
+    LangGraph StateGraph döngülü ajan grafiğini oluşturur ve derler.
+    """
+    llm_with_tools = llm.bind_tools(tools)
 
     def chatbot(state: MessagesState):
-        return {"messages": [llm_with_tools.invoke(state["messages"])]}
+        messages = state["messages"]
+        # Sistem promptu yoksa en başa ekle
+        if not any(isinstance(m, SystemMessage) for m in messages):
+            messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(messages)
+        response = llm_with_tools.invoke(messages)
+        return {"messages": [response]}
 
-    tool_node = ToolNode(tools=usable_tools)
+    tool_node = ToolNode(tools=tools)
 
-    
+    graph_builder = StateGraph(MessagesState)
     graph_builder.add_node("asistan", chatbot)
     graph_builder.add_node("tools", tool_node)
 
     graph_builder.add_edge(START, "asistan")
+    graph_builder.add_conditional_edges("asistan", tools_condition)
+    graph_builder.add_edge("tools", "asistan")  # Döngü (Loop): Tool çıktısı asistana geri beslenir
 
-    graph_builder.add_conditional_edges(
-        "asistan",
-        tools_condition,
-    )
-    
-    graph_builder.add_edge("tools", "asistan")
-
-    agent_graph = graph_builder.compile()
-
-    question = "Önce 125 ile 4'ü çarp, sonra çıkan sonuçtan 100 çıkar. Sonuç nedir?"
-    print(f"\nKullanıcı Sorusu: {question}\n")
-    print("Agent Düşünüyor...\n")
-
-    initial_state = {"messages": [HumanMessage(content=question)]}
-    
-    for event in agent_graph.stream(initial_state, stream_mode="values"):
-        mesaj = event["messages"][-1]
-        mesaj.pretty_print() 
-
-if __name__ == "__main__":
-    main()
+    return graph_builder.compile()

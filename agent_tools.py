@@ -1,45 +1,52 @@
 from langchain_core.tools import tool
 from typing import Union
 
-# @tol dekoratörü, python'da yazılan fonksiyonların LLM tarafından çağrılabileceği araçlara (tools yani) çevirir.
-
 @tool
-def multiply_operation(a: int, b: int) -> int:
-    """
-    Kullanıcı iki sayının çarpımını sorduğunda veya matematiksel bir çarpma işlemi yapmak istediğinde bu aracı kullan.
-    """
-    print(f"\n LLM Agent 'Çarpma İşlemi' tool'unu çağırdı. {a} x {b} hesaplanıyor.")
+def multiply_operation(a: float, b: float) -> float:
+    """İki sayıyı çarpmak için bu aracı kullan."""
     return a * b
 
 @tool
-def addition_operation(a: int, b:int) -> int:
-    """
-    Kullanıcı iki sayının toplamını sorduğunda veya matematiksel bir toplama işlemi yapmak istediğinde bu aracı kullan.
-    """
-    print(f"\n LLM Agent 'Toplama İşlemi' tool'unu çağırdı. {a} + {b} hesaplanıyor.")
+def addition_operation(a: float, b: float) -> float:
+    """İki sayıyı toplamak için bu aracı kullan."""
     return a + b
 
 @tool
-def subtract_operation(a: int, b:int) -> int:
-    """
-    Kullanıcı iki sayının çıkarma işlemini sorduğunda veya matematiksel bir çıkarma işlemi yapmak istediğinde bu aracı kullan.
-    """
-    print(f"\n LLM Agent 'Çıkarma İşlemi' tool'unu çağırdı. {a} - {b} hesaplanıyor.")
+def subtract_operation(a: float, b: float) -> float:
+    """İki sayının farkını almak (çıkarma) için bu aracı kullan."""
     return a - b
 
 @tool
-def division_operation(a: int, b: int) -> Union[float, str]:
-    """
-    Kullanıcı iki sayının bölümünü sorduğunda veya matematiksel bir bölme işlemi yapmak istediğinde bu aracı kullan.
-    """
-    print(f"\n LLM Agent 'Bölme İşlemi' tool'unu çağırdı. {a} / {b} hesaplanıyor.")
-
+def division_operation(a: float, b: float) -> Union[float, str]:
+    """İki sayıyı bölmek için bu aracı kullan."""
     if b == 0:
-        return "Hata: Bir sayı sıfıra bölünemez!"
-    
-    return a / b 
+        return "Hata: Sıfıra bölme yapılamaz."
+    return a / b
 
-# Yapay zekanın kullanabileceği alet çantası
-usable_tools = [multiply_operation, addition_operation, subtract_operation, division_operation]
+# Temel matematik araçları
+base_math_tools = [multiply_operation, addition_operation, subtract_operation, division_operation]
 
-print(" Tool oluşturuldu!")
+def build_pdf_search_tool(retriever):
+    """
+    Oluşturulan vektör veritabanı retriever'ını LangChain tool'una dönüştürür.
+    """
+    @tool
+    def search_pdf(query: str) -> str:
+        """
+        Kullanıcı yüklenen PDF belgeleriyle ilgili bir bilgi sorduğunda veya 
+        belgeler içinde veri aramak gerektiğinde bu aracı kullan.
+        """
+        docs = retriever.invoke(query)
+        if not docs:
+            return "PDF belgelerinde bu konuyla ilgili eşleşen bilgi bulunamadı."
+        
+        results = []
+        for doc in docs:
+            source = doc.metadata.get("source", "Bilinmeyen Belge")
+            page = doc.metadata.get("page", 0) + 1
+            content = doc.page_content.strip()
+            results.append(f"[Kaynak: {source} | Sayfa: {page}]\n{content}")
+            
+        return "\n\n".join(results)
+        
+    return search_pdf
